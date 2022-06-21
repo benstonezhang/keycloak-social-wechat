@@ -4,9 +4,6 @@ Works:
 - adapter to WeChat mini program login
 - support more than one appid
 
-Issues:
-- handle multi appid is inefficient
-
 ## Reference
 Artifact here is based on work from 
 [jyqq163](https://github.com/jyqq163/keycloak-services-social-weixin),

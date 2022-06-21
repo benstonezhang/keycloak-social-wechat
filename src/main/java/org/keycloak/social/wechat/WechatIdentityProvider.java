@@ -232,45 +232,41 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
     }
 
     private JsonNode fetchAccessToken(String appId) {
-        var idList = getConfig().getWechatMiniProgramId().split(",");
-        var secretList = getConfig().getWechatMiniProgramSecret().split(",");
-        for (int i = 0; i < idList.length; i++) {
-            var id = idList[i].trim();
-            if (id.equals(appId)) {
-                try {
-                    return SimpleHttp
-                            .doGet(WECHAT_ACCESS_TOKEN_URL_1 + appId + WECHAT_ACCESS_TOKEN_URL_2 + secretList[i],
-                                   session)
-                            .asJson();
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-                break;
+        var secret = getConfig().getWechatMiniProgramSecret(appId);
+        if (secret != null) {
+            try {
+                return SimpleHttp
+                        .doGet(WECHAT_ACCESS_TOKEN_URL_1 + appId + WECHAT_ACCESS_TOKEN_URL_2 + secret, session)
+                        .asJson();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
         }
         return null;
     }
 
     private String getAccessToken(String appId) {
-        String accessToken = null;
-        for (int i = 0; i < 15; i++) {
-            accessToken = tokenCache.computeIfAbsent(appId, k -> cacheLockMark, 10000, MILLISECONDS);
-            if (!accessToken.startsWith(CACHE_LOCK_PREFIX)) {
-                break;
-            }
-            if (accessToken.equals(cacheLockMark)) {
-                log.info("wechat application " + appId + ": refresh access token");
-                var tokenResponse = fetchAccessToken(appId);
-                if (tokenResponse != null) {
-                    accessToken = getJsonProperty(tokenResponse, getAccessTokenResponseParameter());
-                    int expireInSeconds = Integer.parseInt(getJsonProperty(tokenResponse, EXPIRES_IN)) - 60;
-                    tokenCache.put(appId, accessToken, expireInSeconds, SECONDS);
+        String accessToken = tokenCache.get(appId);
+        if (accessToken == null || accessToken.startsWith(CACHE_LOCK_PREFIX)) {
+            for (int i = 0; i < 15; i++) {
+                accessToken = tokenCache.computeIfAbsent(appId, k -> cacheLockMark, 10000, MILLISECONDS);
+                if (!accessToken.startsWith(CACHE_LOCK_PREFIX)) {
                     break;
                 }
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException ignored) {
+                if (accessToken.equals(cacheLockMark)) {
+                    log.info("wechat application " + appId + ": refresh access token");
+                    var tokenResponse = fetchAccessToken(appId);
+                    if (tokenResponse != null) {
+                        accessToken = getJsonProperty(tokenResponse, getAccessTokenResponseParameter());
+                        int expireInSeconds = Integer.parseInt(getJsonProperty(tokenResponse, EXPIRES_IN)) - 60;
+                        tokenCache.put(appId, accessToken, expireInSeconds, SECONDS);
+                        break;
+                    }
+                }
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException ignored) {
+                }
             }
         }
         return accessToken;
@@ -414,7 +410,6 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         }
 
         public SimpleHttp generateTokenRequest(String authorizationCode, WechatLoginType loginType, String appId) {
-//            log.info("login type: " + loginType);
             final var config = getConfig();
 
             switch (loginType) {
@@ -436,16 +431,11 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                             .param(OAUTH2_PARAMETER_REDIRECT_URI, uriInfo.getAbsolutePath().toString())
                             .param(OAUTH2_PARAMETER_GRANT_TYPE, OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
                 case MINI_PROGRAM:
-                    var idList = config.getWechatMiniProgramId().split(",");
-                    var secretList = config.getWechatMiniProgramSecret().split(",");
-                    for (int i = 0; i < idList.length; i++) {
-                        var id = idList[i].trim();
-                        if (id.equals(appId)) {
-//                            log.info("wechat mini program appid match: " + appId);
-                            return SimpleHttp
-                                    .doGet(WECHAT_MP_AUTH_URL_1 + id + WECHAT_MP_AUTH_URL_2 + secretList[i].trim() +
-                                           WECHAT_MP_AUTH_URL_3 + authorizationCode + WECHAT_MP_AUTH_URL_4, session);
-                        }
+                    var secret = config.getWechatMiniProgramSecret(appId);
+                    if (secret != null) {
+                        return SimpleHttp
+                                .doGet(WECHAT_MP_AUTH_URL_1 + appId + WECHAT_MP_AUTH_URL_2 + secret +
+                                       WECHAT_MP_AUTH_URL_3 + authorizationCode + WECHAT_MP_AUTH_URL_4, session);
                     }
             }
 

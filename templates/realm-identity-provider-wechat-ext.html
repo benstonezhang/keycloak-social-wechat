@@ -1,20 +1,20 @@
 <div class="form-group" clearfix>
-    <label class="col-md-2 control-label" for="wechatOfficialAccountId"><span class="required">*</span>{{:: 'WeChat Official Account AppId' | translate}}</label>
+    <label class="col-md-2 control-label" for="wechatOfficialAccountId"><span class="required">*</span>{{:: 'Official Account AppId' | translate}}</label>
     <div class="col-md-6"><input class="form-control" id="wechatOfficialAccountId" type="text" ng-model="identityProvider.config.wechatOfficialAccountId"></div>
     <kc-tooltip>{{:: 'identity-provider.wechat-official-account-appid.tooltip' | translate}}</kc-tooltip>
 </div>
 <div class="form-group" clearfix>
-    <label class="col-md-2 control-label" for="wechatOfficialAccountSecret"><span class="required">*</span>{{:: 'WeChat Official Account Secret' | translate}}</label>
+    <label class="col-md-2 control-label" for="wechatOfficialAccountSecret"><span class="required">*</span>{{:: 'Official Account Secret' | translate}}</label>
     <div class="col-md-6"><input class="form-control" id="wechatOfficialAccountSecret" kc-password ng-model="identityProvider.config.wechatOfficialAccountSecret" ng-disabled="identityProvider.config.wechatOfficialAccountId == ''" ng-required="identityProvider.config.wechatOfficialAccountId != ''"></div>
     <kc-tooltip>{{:: 'identity-provider.wechat-official-account-secret.tooltip' | translate}}</kc-tooltip>
 </div>
 <div class="form-group" clearfix>
-    <label class="col-md-2 control-label" for="wechatMiniProgramId"><span class="required">*</span>{{:: 'WeChat Mini Program AppId' | translate}}</label>
+    <label class="col-md-2 control-label" for="wechatMiniProgramId"><span class="required">*</span>{{:: 'Mini Program AppId' | translate}}</label>
     <div class="col-md-6"><input class="form-control" id="wechatMiniProgramId" type="text" ng-model="identityProvider.config.wechatMiniProgramId"></div>
     <kc-tooltip>{{:: 'identity-provider.wechat-mini-program-appid.tooltip' | translate}}</kc-tooltip>
 </div>
 <div class="form-group" clearfix>
-    <label class="col-md-2 control-label" for="wechatMiniProgramSecret"><span class="required">*</span>{{:: 'WeChat Mini Program Secret' | translate}}</label>
+    <label class="col-md-2 control-label" for="wechatMiniProgramSecret"><span class="required">*</span>{{:: 'Mini Program Secret' | translate}}</label>
     <div class="col-md-6"><input class="form-control" id="wechatMiniProgramSecret" kc-password ng-model="identityProvider.config.wechatMiniProgramSecret" ng-disabled="identityProvider.config.wechatMiniProgramId == ''" ng-required="identityProvider.config.wechatMiniProgramId != ''"></div>
     <kc-tooltip>{{:: 'identity-provider.wechat-mini-program-secret.tooltip' | translate}}</kc-tooltip>
 </div>
