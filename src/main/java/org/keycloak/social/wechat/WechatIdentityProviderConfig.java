@@ -9,12 +9,12 @@ import java.util.Map;
 public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
     private static final String WECHAT_OFFICIAL_ACCOUNT_ID = "wechatOfficialAccountId";
     private static final String WECHAT_OFFICIAL_ACCOUNT_SECRET = "wechatOfficialAccountSecret";
-
     private static final String WECHAT_MINI_PROGRAM_ID = "wechatMiniProgramId";
     private static final String WECHAT_MINI_PROGRAM_SECRET = "wechatMiniProgramSecret";
-
     private static final String CUSTOMIZED_LOGIN_URL_FOR_PC = "customizedLoginUrl";
+    private static final String LIST_SPLIT_REGEX = "(,|;)";
 
+    private Map<String, String> weChatOaApps = null;
     private Map<String, String> weChatMpApps = null;
 
     public WechatIdentityProviderConfig() {
@@ -26,6 +26,7 @@ public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
     }
 
     public void setWechatOfficialAccountId(String appid) {
+        weChatOaApps = null;
         getConfig().put(WECHAT_OFFICIAL_ACCOUNT_ID, appid);
     }
 
@@ -34,11 +35,21 @@ public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
     }
 
     public void setWechatOfficialAccountSecret(String secret) {
+        weChatOaApps = null;
         getConfig().put(WECHAT_OFFICIAL_ACCOUNT_SECRET, secret);
     }
 
     public String getWechatOfficialAccountSecret() {
         return getConfig().get(WECHAT_OFFICIAL_ACCOUNT_SECRET);
+    }
+
+    public String getWechatOfficialAccountSecret(String appId) {
+        if (weChatOaApps == null) {
+            weChatOaApps = new HashMap<>();
+            parseAppIdAndSecret(weChatOaApps, getConfig().get(WECHAT_OFFICIAL_ACCOUNT_ID),
+                                getConfig().get(WECHAT_OFFICIAL_ACCOUNT_SECRET));
+        }
+        return weChatOaApps.get(appId);
     }
 
     public void setWechatMiniProgramId(String appid) {
@@ -61,13 +72,11 @@ public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
 
     public String getWechatMiniProgramSecret(String appId) {
         if (weChatMpApps == null) {
-            parseAppIdAndSecret();
+            weChatMpApps = new HashMap<>();
+            parseAppIdAndSecret(weChatMpApps, getConfig().get(WECHAT_MINI_PROGRAM_ID),
+                                getConfig().get(WECHAT_MINI_PROGRAM_SECRET));
         }
         return weChatMpApps.get(appId);
-    }
-
-    public Map<String, String> fetchWeChatMpApps() {
-        return weChatMpApps;
     }
 
     public void setCustomizedLoginUrl(String url) {
@@ -78,16 +87,14 @@ public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
         return getConfig().get(CUSTOMIZED_LOGIN_URL_FOR_PC);
     }
 
-    private void parseAppIdAndSecret() {
-        weChatMpApps = new HashMap<>();
-        var appIds = getConfig().get(WECHAT_MINI_PROGRAM_ID).split(",");
-        var secrets = getConfig().get(WECHAT_MINI_PROGRAM_SECRET).split(",");
-        var count = Math.min(appIds.length, secrets.length);
-        for (int i = 0; i < count; i++) {
+    private static void parseAppIdAndSecret(Map<String, String> apps, String ids, String secrets) {
+        var appIds = ids.split(LIST_SPLIT_REGEX);
+        var appSecrets = secrets.split(LIST_SPLIT_REGEX);
+        for (int i = 0; i < Math.min(appIds.length, appSecrets.length); i++) {
             var appId = appIds[i].trim();
-            var secret = secrets[i].trim();
-            if ((!appId.isEmpty()) && (!secret.isEmpty())) {
-                weChatMpApps.put(appId, secret);
+            var appSecret = appSecrets[i].trim();
+            if ((!appId.isEmpty()) && (!appSecret.isEmpty())) {
+                apps.put(appId, appSecret);
             }
         }
     }

@@ -144,13 +144,17 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                 // 微信小程序
                 var appId = loginHint.substring(0, sep);
                 var code = loginHint.substring(sep + 1);
-//                log.info("appid=" + appId + ", code=" + code);
+                log.info("WeChatMP: appid=" + appId + ", code=" + code);
 
                 authSession.setUserSessionNote(APP_ID, appId);
                 authSession.setUserSessionNote(LOGIN_TYPE, WechatLoginType.MINI_PROGRAM.name());
                 return UriBuilder.fromUri(URI.create(request.getUriInfo().getAbsolutePath() + "/../endpoint"))
                                  .queryParam(OAUTH2_PARAMETER_STATE, request.getState().getEncoded())
                                  .queryParam(OAUTH2_PARAMETER_CODE, code);
+            } else {
+                // 微信公众号可以将appid编码到loginHint中
+                authSession.setUserSessionNote(APP_ID, loginHint);
+                log.info("WeChatOA: appid=" + loginHint);
             }
         }
 
@@ -187,6 +191,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         uriBuilder.queryParam(OAUTH2_PARAMETER_REDIRECT_URI, request.getRedirectUri())
                   .queryParam(OAUTH2_PARAMETER_STATE, request.getState().getEncoded());
         authSession.setUserSessionNote(LOGIN_TYPE, loginType.name());
+        log.info("LoginType: " + loginType.name());
 
         if (config.isLoginHint() && loginHint != null) {
             uriBuilder.queryParam(OIDCLoginProtocol.LOGIN_HINT_PARAM, loginHint);
@@ -231,20 +236,6 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         return false;
     }
 
-    private JsonNode fetchAccessToken(String appId) {
-        var secret = getConfig().getWechatMiniProgramSecret(appId);
-        if (secret != null) {
-            try {
-                return SimpleHttp
-                        .doGet(WECHAT_ACCESS_TOKEN_URL_1 + appId + WECHAT_ACCESS_TOKEN_URL_2 + secret, session)
-                        .asJson();
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
-        return null;
-    }
-
     private String getAccessToken(String appId) {
         String accessToken = tokenCache.get(appId);
         if (accessToken == null || accessToken.startsWith(CACHE_LOCK_PREFIX)) {
@@ -254,8 +245,22 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                     break;
                 }
                 if (accessToken.equals(cacheLockMark)) {
-                    log.info("wechat application " + appId + ": refresh access token");
-                    var tokenResponse = fetchAccessToken(appId);
+                    log.info("WeChat application " + appId + ": refresh access token");
+                    var secret = getConfig().getWechatMiniProgramSecret(appId);
+                    if (secret == null) {
+                        log.warn("Unknown WeChat application: " + appId);
+                        break;
+                    }
+
+                    JsonNode tokenResponse = null;
+                    try {
+                        tokenResponse = SimpleHttp
+                                .doGet(WECHAT_ACCESS_TOKEN_URL_1 + appId + WECHAT_ACCESS_TOKEN_URL_2 + secret, session)
+                                .asJson();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+
                     if (tokenResponse != null) {
                         accessToken = getJsonProperty(tokenResponse, getAccessTokenResponseParameter());
                         int expireInSeconds = Integer.parseInt(getJsonProperty(tokenResponse, EXPIRES_IN)) - 60;
@@ -283,7 +288,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
             e.printStackTrace();
             throw new IdentityBrokerException("Can't parse OAuth server response: " + response);
         }
-//        log.info("user profile: " + profile.toString());
+        log.info("User profile: " + profile.toString());
         var context = extractIdentityFromProfile(profile, appId);
 
         String accessToken = getJsonProperty(profile, getAccessTokenResponseParameter());
@@ -293,7 +298,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         if (accessToken == null) {
             throw new IdentityBrokerException("No access token available in OAuth server response: " + response);
         }
-//        log.info("access token: " + accessToken);
+        log.info("Access token: " + accessToken);
         context.getContextData().put(FEDERATED_ACCESS_TOKEN, accessToken);
 
         return context;
@@ -368,7 +373,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                     var tokenRequest = generateTokenRequest(authorizationCode, loginType, appId);
                     if (tokenRequest != null) {
                         var response = tokenRequest.asString();
-                        logger.info("response from auth code = " + response);
+                        logger.info("Response from auth code = " + response);
 
                         var federatedIdentity = getFederatedIdentity(response, loginType, appId);
                         if (getConfig().isStoreToken() && federatedIdentity.getToken() == null) {
@@ -379,19 +384,18 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                         federatedIdentity.setIdpConfig(getConfig());
                         federatedIdentity.setIdp(WechatIdentityProvider.this);
                         federatedIdentity.setAuthenticationSession(authSession);
-
                         var authenticated = callback.authenticated(federatedIdentity);
 
                         if (WechatLoginType.MINI_PROGRAM.equals(loginType) &&
                             authenticated.getStatus() == Response.Status.FOUND.getStatusCode()) {
                             // 微信小程序处理不了重定向时生成的Cookie，需要分步处理
                             var location = authenticated.getLocation().toString();
-                            return Response.status(Response.Status.NO_CONTENT)
-                                           .header(HTTP_REDIRECT_LOCATION_HEADER, location)
-                                           .build();
-                        } else {
-                            return authenticated;
+                            authenticated = Response.status(Response.Status.NO_CONTENT)
+                                                    .header(HTTP_REDIRECT_LOCATION_HEADER, location)
+                                                    .build();
                         }
+
+                        return authenticated;
                     }
                 }
             } catch (WebApplicationException e) {
@@ -411,32 +415,38 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
 
         public SimpleHttp generateTokenRequest(String authorizationCode, WechatLoginType loginType, String appId) {
             final var config = getConfig();
+            String secret;
 
-            switch (loginType) {
-                case BROWSER:
+            if (WechatLoginType.MINI_PROGRAM.equals(loginType)) {
+                secret = config.getWechatMiniProgramSecret(appId);
+                log.info("WeChatMP: appId=" + appId + ", appSecret=" + secret);
+                if (secret != null) {
                     return SimpleHttp
-                            .doPost(TOKEN_URL, session)
-                            .param(OAUTH2_PARAMETER_CODE, authorizationCode)
-                            .param(OAUTH2_PARAMETER_CLIENT_ID, config.getClientId())
-                            .param(OAUTH2_PARAMETER_CLIENT_SECRET, config.getClientSecret())
-                            .param(OAUTH2_PARAMETER_REDIRECT_URI, uriInfo.getAbsolutePath().toString())
-                            .param(OAUTH2_PARAMETER_GRANT_TYPE, OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
-                case OFFICIAL_ACCOUNT:
-                case CUSTOMIZED:
-                    return SimpleHttp
-                            .doPost(TOKEN_URL, session)
-                            .param(OAUTH2_PARAMETER_CODE, authorizationCode)
-                            .param(OAUTH2_PARAMETER_CLIENT_ID, config.getWechatOfficialAccountId())
-                            .param(OAUTH2_PARAMETER_CLIENT_SECRET, config.getWechatOfficialAccountSecret())
-                            .param(OAUTH2_PARAMETER_REDIRECT_URI, uriInfo.getAbsolutePath().toString())
-                            .param(OAUTH2_PARAMETER_GRANT_TYPE, OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
-                case MINI_PROGRAM:
-                    var secret = config.getWechatMiniProgramSecret(appId);
-                    if (secret != null) {
-                        return SimpleHttp
-                                .doGet(WECHAT_MP_AUTH_URL_1 + appId + WECHAT_MP_AUTH_URL_2 + secret +
-                                       WECHAT_MP_AUTH_URL_3 + authorizationCode + WECHAT_MP_AUTH_URL_4, session);
+                            .doGet(WECHAT_MP_AUTH_URL_1 + appId + WECHAT_MP_AUTH_URL_2 + secret +
+                                   WECHAT_MP_AUTH_URL_3 + authorizationCode + WECHAT_MP_AUTH_URL_4, session);
+                }
+            } else {
+                if (WechatLoginType.BROWSER.equals(loginType)) {
+                    appId = config.getClientId();
+                    secret = config.getClientSecret();
+                } else {
+                    if (appId == null) {
+                        appId = config.getWechatOfficialAccountId();
+                        secret = config.getWechatOfficialAccountSecret();
+                    } else {
+                        secret = config.getWechatOfficialAccountSecret(appId);
                     }
+                }
+                log.info("WeChatOA: appId=" + appId + ", appSecret=" + secret);
+                if (secret != null) {
+                    return SimpleHttp
+                            .doPost(TOKEN_URL, session)
+                            .param(OAUTH2_PARAMETER_CODE, authorizationCode)
+                            .param(OAUTH2_PARAMETER_CLIENT_ID, appId)
+                            .param(OAUTH2_PARAMETER_CLIENT_SECRET, secret)
+                            .param(OAUTH2_PARAMETER_REDIRECT_URI, uriInfo.getAbsolutePath().toString())
+                            .param(OAUTH2_PARAMETER_GRANT_TYPE, OAUTH2_GRANT_TYPE_AUTHORIZATION_CODE);
+                }
             }
 
             return null;

@@ -6,7 +6,7 @@
 
     <groupId>org.keycloak</groupId>
     <artifactId>keycloak-social-wechat</artifactId>
-    <version>0.1</version>
+    <version>0.2</version>
     <name>Keycloak WeChat Identity Provider</name>
 
     <properties>
@@ -16,7 +16,7 @@
         <maven.compiler.source>11</maven.compiler.source>
         <maven.compiler.target>11</maven.compiler.target>
         <maven.compiler.release>11</maven.compiler.release>
-        <keycloak.version>17.0.1</keycloak.version>
+        <keycloak.version>18.0.2</keycloak.version>
         <httpclient.version>4.5.13</httpclient.version>
         <infinispan.version>13.0.10.Final</infinispan.version>
     </properties>
