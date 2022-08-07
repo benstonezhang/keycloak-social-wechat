@@ -82,6 +82,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
     private static final String OPEN_ID = "openid";
     private static final String SESSION_KEY = "session_key";
     private static final String APP_ID = "appid";
+    private static final String USER_ID = "userid";
     private static final String LOGIN_TYPE = "login_type";
     private static final String EXPIRES_IN = "expires_in";
 
@@ -312,19 +313,37 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         if (openId == null) {
             throw new IdentityBrokerException("Can't parse unionid/openid from server response: ");
         }
-        openId = appId + "-" + openId;
+        // keycloak not allow capital in username, so need to encode to lowercase
+        StringBuilder sb = new StringBuilder();
+        sb.append(appId).append('-');
+        for (char c : openId.toCharArray()) {
+            if (c == '#') {
+                sb.append(c);
+                sb.append(c);
+            } else if ((c < 'A') || (c > 'Z')) {
+                sb.append(c);
+            } else {
+                sb.append('#');
+                sb.append((char) (c - 'A' + 'a'));
+            }
+        }
+        String id = sb.toString();
 
-        var user = new BrokeredIdentityContext(openId);
-        user.setUsername(openId);
-        user.setBrokerUserId(openId);
-        user.setModelUsername(openId);
+        var user = new BrokeredIdentityContext(id);
+        user.setBrokerUserId(id);
+        user.setUsername(id);
+        user.setModelUsername(id);
+        user.setUserAttribute(APP_ID, appId);
+        user.setUserAttribute(OPEN_ID, openId);
+        user.setUserAttribute(USER_ID, appId + "-" + openId);
         String unionId = getJsonProperty(profile, UNION_ID);
         if (unionId != null) {
             user.setUserAttribute(UNION_ID, unionId);
         }
-        user.setUserAttribute(APP_ID, appId);
-        user.setUserAttribute(OPEN_ID, openId);
-        user.setUserAttribute(SESSION_KEY, getJsonProperty(profile, SESSION_KEY));
+        String sessionKey = getJsonProperty(profile, SESSION_KEY);
+        if (sessionKey != null) {
+            user.setUserAttribute(SESSION_KEY, sessionKey);
+        }
         AbstractJsonUserAttributeMapper.storeUserProfileForMapper(user, profile, getConfig().getAlias());
         return user;
     }
@@ -366,22 +385,23 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                 }
 
                 if (authorizationCode != null) {
+                    final var config = getConfig();
                     final var sessionNotes = authSession.getUserSessionNotes();
                     final var loginType = WechatLoginType.valueOf(sessionNotes.get(LOGIN_TYPE));
-                    final var appId = sessionNotes.get(APP_ID);
+                    final var appId = findRealAppId(config, loginType, sessionNotes.get(APP_ID));
 
-                    var tokenRequest = generateTokenRequest(authorizationCode, loginType, appId);
+                    var tokenRequest = generateTokenRequest(config, authorizationCode, loginType, appId);
                     if (tokenRequest != null) {
                         var response = tokenRequest.asString();
                         logger.info("Response from auth code = " + response);
 
                         var federatedIdentity = getFederatedIdentity(response, loginType, appId);
-                        if (getConfig().isStoreToken() && federatedIdentity.getToken() == null) {
+                        if (config.isStoreToken() && federatedIdentity.getToken() == null) {
                             // make sure that token wasn't already set by getFederatedIdentity();
                             // want to be able to allow provider to set the token itself.
                             federatedIdentity.setToken(response);
                         }
-                        federatedIdentity.setIdpConfig(getConfig());
+                        federatedIdentity.setIdpConfig(config);
                         federatedIdentity.setIdp(WechatIdentityProvider.this);
                         federatedIdentity.setAuthenticationSession(authSession);
                         var authenticated = callback.authenticated(federatedIdentity);
@@ -413,8 +433,22 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
             return ErrorPage.error(session, null, Response.Status.BAD_GATEWAY, message);
         }
 
-        public SimpleHttp generateTokenRequest(String authorizationCode, WechatLoginType loginType, String appId) {
-            final var config = getConfig();
+        public String findRealAppId(WechatIdentityProviderConfig config, WechatLoginType loginType, String appId) {
+            if (appId == null) {
+                switch (loginType) {
+                    case BROWSER:
+                        return config.getClientId();
+                    case OFFICIAL_ACCOUNT:
+                        return config.getWechatOfficialAccountId();
+                    case MINI_PROGRAM:
+                        return config.getWechatMiniProgramId();
+                }
+            }
+            return appId;
+        }
+
+        public SimpleHttp generateTokenRequest(WechatIdentityProviderConfig config, String authorizationCode,
+                                               WechatLoginType loginType, String appId) {
             String secret;
 
             if (WechatLoginType.MINI_PROGRAM.equals(loginType)) {
@@ -427,15 +461,9 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                 }
             } else {
                 if (WechatLoginType.BROWSER.equals(loginType)) {
-                    appId = config.getClientId();
                     secret = config.getClientSecret();
                 } else {
-                    if (appId == null) {
-                        appId = config.getWechatOfficialAccountId();
-                        secret = config.getWechatOfficialAccountSecret();
-                    } else {
-                        secret = config.getWechatOfficialAccountSecret(appId);
-                    }
+                    secret = config.getWechatOfficialAccountSecret(appId);
                 }
                 log.info("WeChatOA: appId=" + appId + ", appSecret=" + secret);
                 if (secret != null) {
