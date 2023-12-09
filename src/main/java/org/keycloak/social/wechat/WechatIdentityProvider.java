@@ -3,6 +3,10 @@ package org.keycloak.social.wechat;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.ws.rs.GET;
+import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.WebApplicationException;
+import jakarta.ws.rs.core.*;
 import org.infinispan.Cache;
 import org.infinispan.commons.api.CacheContainerAdmin;
 import org.infinispan.configuration.cache.CacheMode;
@@ -15,6 +19,7 @@ import org.jboss.logging.Logger;
 import org.keycloak.OAuth2Constants;
 import org.keycloak.OAuthErrorException;
 import org.keycloak.broker.oidc.AbstractOAuth2IdentityProvider;
+import org.keycloak.broker.oidc.OAuth2IdentityProviderConfig;
 import org.keycloak.broker.oidc.mappers.AbstractJsonUserAttributeMapper;
 import org.keycloak.broker.provider.AuthenticationRequest;
 import org.keycloak.broker.provider.BrokeredIdentityContext;
@@ -34,10 +39,6 @@ import org.keycloak.services.ErrorPage;
 import org.keycloak.services.messages.Messages;
 import org.keycloak.sessions.AuthenticationSessionModel;
 
-import javax.ws.rs.GET;
-import javax.ws.rs.QueryParam;
-import javax.ws.rs.WebApplicationException;
-import javax.ws.rs.core.*;
 import java.io.IOException;
 import java.net.URI;
 import java.util.Objects;
@@ -120,7 +121,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
 
     @Override
     public Object callback(RealmModel realm, AuthenticationCallback callback, EventBuilder event) {
-        return new WechatEndpoint(callback, realm, event);
+        return new WechatEndpoint(callback, realm, event, this);
     }
 
     @Override
@@ -355,8 +356,12 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
         @Context
         protected UriInfo uriInfo;
 
-        public WechatEndpoint(AuthenticationCallback callback, RealmModel realm, EventBuilder event) {
-            super(callback, realm, event);
+        private final OAuth2IdentityProviderConfig providerConfig;
+
+        public WechatEndpoint(AuthenticationCallback callback, RealmModel realm, EventBuilder event,
+                              AbstractOAuth2IdentityProvider provider) {
+            super(callback, realm, event, provider);
+            providerConfig = provider.getConfig();
         }
 
         @Override
@@ -375,7 +380,7 @@ public class WechatIdentityProvider extends AbstractOAuth2IdentityProvider<Wecha
                 if (error != null) {
                     logger.error(error + " for broker login " + getConfig().getProviderId());
                     if (error.equals(ACCESS_DENIED)) {
-                        return callback.cancelled();
+                        return callback.cancelled(providerConfig);
                     } else if (error.equals(OAuthErrorException.LOGIN_REQUIRED) ||
                                error.equals(OAuthErrorException.INTERACTION_REQUIRED)) {
                         return callback.error(error);

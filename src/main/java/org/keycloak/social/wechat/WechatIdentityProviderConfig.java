@@ -7,11 +7,12 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class WechatIdentityProviderConfig extends OAuth2IdentityProviderConfig {
-    private static final String WECHAT_OFFICIAL_ACCOUNT_ID = "wechatOfficialAccountId";
-    private static final String WECHAT_OFFICIAL_ACCOUNT_SECRET = "wechatOfficialAccountSecret";
-    private static final String WECHAT_MINI_PROGRAM_ID = "wechatMiniProgramId";
-    private static final String WECHAT_MINI_PROGRAM_SECRET = "wechatMiniProgramSecret";
-    private static final String CUSTOMIZED_LOGIN_URL_FOR_PC = "customizedLoginUrl";
+    static final String WECHAT_OFFICIAL_ACCOUNT_ID = "wechatOfficialAccountId";
+    static final String WECHAT_OFFICIAL_ACCOUNT_SECRET = "wechatOfficialAccountSecret";
+    static final String WECHAT_MINI_PROGRAM_ID = "wechatMiniProgramId";
+    static final String WECHAT_MINI_PROGRAM_SECRET = "wechatMiniProgramSecret";
+    static final String CUSTOMIZED_LOGIN_URL_FOR_PC = "customizedLoginUrl";
+
     private static final String LIST_SPLIT_REGEX = "(,|;)";
 
     private Map<String, String> weChatOaApps = null;
